@@ -1,0 +1,22 @@
+# global
+.DS_Store
+Thumbs.db
+*.log
+
+# python
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.env
+
+# flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.env
+
+# editors
+.vscode/
+.idea/
