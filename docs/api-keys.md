@@ -1,14 +1,15 @@
 # API Keys and Secrets
 
-Add secrets in these folders:
+Add keys in these files. Keep variable names exactly as below.
 
-- `backend/.env`
-  - `DATABASE_URL` (PostgreSQL connection string)
-  - `JWT_SECRET`
-  - `SUPABASE_URL` (Phase 3)
-  - `SUPABASE_SERVICE_ROLE_KEY` (Phase 3)
+## `mobile/.env`
+- `API_KEY_01_API_BASE_URL`
+- `API_KEY_02_USER_ID`
+- `API_KEY_03_SUPABASE_URL`
+- `API_KEY_04_SUPABASE_ANON_KEY`
 
-- `mobile/.env`
-  - `API_BASE_URL`
-  - `SUPABASE_URL` (Phase 3)
-  - `SUPABASE_ANON_KEY` (Phase 3)
+## `backend/.env`
+- `API_KEY_01_DATABASE_URL`
+- `API_KEY_02_JWT_SECRET`
+- `API_KEY_03_SUPABASE_URL`
+- `API_KEY_04_SUPABASE_SERVICE_ROLE_KEY`
