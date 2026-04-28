@@ -117,10 +117,37 @@ class TransactionRepository {
       where: 'id = ? AND user_id = ?',
       whereArgs: [tx.id, userId],
     );
+
+    final nowIso = now.toIso8601String();
+    await database.insert(
+      'vendor_rules',
+      {
+        'normalized_raw_vendor_name': _normalize(tx.rawVendorName),
+        'user_id': userId,
+        'vendor_name': vendorName.trim().isEmpty ? tx.rawVendorName : vendorName.trim(),
+        'shop_type': shopType,
+        'is_synced': 0,
+        'updated_at': nowIso,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<void> addLocal(TransactionItem tx) async {
     final database = await LocalDatabase.instance.db;
+    final rules = await database.query(
+      'vendor_rules',
+      where: 'normalized_raw_vendor_name = ? AND user_id = ?',
+      whereArgs: [_normalize(tx.rawVendorName), userId],
+      limit: 1,
+    );
+    if (rules.isNotEmpty) {
+      final rule = rules.first;
+      tx.vendorName = rule['vendor_name'] as String?;
+      tx.shopType = (rule['shop_type'] as String?) ?? tx.shopType;
+      tx.updatedAt = DateTime.now().toUtc();
+      tx.isSynced = false;
+    }
     await database.insert('transactions', tx.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -163,5 +190,9 @@ class TransactionRepository {
     final now = DateTime.now().microsecondsSinceEpoch;
     final rnd = Random().nextInt(1 << 20);
     return '$now$rnd';
+  }
+
+  String _normalize(String input) {
+    return input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').replaceAll(RegExp(r'\\s+'), ' ').trim();
   }
 }

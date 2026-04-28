@@ -35,6 +35,16 @@ class LocalDatabase {
           )
         ''');
         await database.execute('CREATE INDEX idx_tx_user_time ON transactions(user_id, tx_timestamp)');
+        await database.execute('''
+          CREATE TABLE vendor_rules (
+            normalized_raw_vendor_name TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            vendor_name TEXT NOT NULL,
+            shop_type TEXT NOT NULL,
+            is_synced INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+          )
+        ''');
       },
     );
   }
