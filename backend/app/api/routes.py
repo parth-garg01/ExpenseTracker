@@ -1,10 +1,11 @@
 from datetime import datetime
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas import SmsIngestRequest, VendorClassifyRequest
+from app.api.schemas import SmsIngestRequest, SyncPushRequest, VendorClassifyRequest
 from app.db.deps import get_db
 from app.db.models import Transaction
 from app.services.transactions import create_or_update_vendor, ingest_sms_transaction
@@ -15,6 +16,94 @@ router = APIRouter(prefix='/api')
 @router.get('/health')
 def health() -> dict[str, str]:
     return {'status': 'ok'}
+
+
+def _require_user(user_id: str | None) -> str:
+    if not user_id:
+        raise HTTPException(status_code=401, detail='Missing X-User-Id header')
+    return user_id
+
+
+@router.post('/sync/push')
+def sync_push(
+    payload: SyncPushRequest,
+    x_user_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    user_id = _require_user(x_user_id)
+    updated = 0
+    inserted = 0
+
+    for item in payload.transactions:
+        if item.user_id != user_id:
+            continue
+        existing = db.scalar(select(Transaction).where(Transaction.id == uuid.UUID(item.id)))
+        incoming_updated = datetime.fromisoformat(item.updated_at.replace('Z', '+00:00'))
+
+        if existing is None:
+            tx = Transaction(
+                id=uuid.UUID(item.id),
+                user_id=uuid.UUID(user_id),
+                amount=item.amount,
+                type=item.type,
+                raw_vendor_name=item.raw_vendor_name,
+                vendor_name=item.vendor_name,
+                shop_type=item.shop_type,
+                tx_timestamp=datetime.fromisoformat(item.tx_timestamp.replace('Z', '+00:00')),
+                description=item.description,
+                is_synced=True,
+                updated_at=incoming_updated,
+            )
+            db.add(tx)
+            inserted += 1
+            continue
+
+        if incoming_updated > existing.updated_at:
+            existing.amount = item.amount
+            existing.type = item.type
+            existing.raw_vendor_name = item.raw_vendor_name
+            existing.vendor_name = item.vendor_name
+            existing.shop_type = item.shop_type
+            existing.tx_timestamp = datetime.fromisoformat(item.tx_timestamp.replace('Z', '+00:00'))
+            existing.description = item.description
+            existing.updated_at = incoming_updated
+            existing.is_synced = True
+            updated += 1
+
+    db.commit()
+    return {'inserted': inserted, 'updated': updated}
+
+
+@router.get('/sync/pull')
+def sync_pull(
+    since: str | None = Query(default=None),
+    x_user_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    user_id = _require_user(x_user_id)
+    stmt = select(Transaction).where(Transaction.user_id == uuid.UUID(user_id))
+    if since:
+        since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+        stmt = stmt.where(Transaction.updated_at > since_dt)
+    rows = db.scalars(stmt.order_by(Transaction.updated_at.asc()).limit(1000)).all()
+    return {
+        'transactions': [
+            {
+                'id': str(tx.id),
+                'user_id': str(tx.user_id),
+                'amount': float(tx.amount),
+                'type': tx.type,
+                'raw_vendor_name': tx.raw_vendor_name,
+                'vendor_name': tx.vendor_name,
+                'shop_type': tx.shop_type,
+                'tx_timestamp': tx.tx_timestamp.isoformat(),
+                'description': tx.description,
+                'is_synced': 1,
+                'updated_at': tx.updated_at.isoformat(),
+            }
+            for tx in rows
+        ]
+    }
 
 
 @router.post('/transactions/ingest-sms')

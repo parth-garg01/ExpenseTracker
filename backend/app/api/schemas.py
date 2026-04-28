@@ -16,3 +16,21 @@ class TransactionEditRequest(BaseModel):
     shop_name: str | None = None
     shop_type_name: str | None = None
     description: str | None = None
+
+
+class SyncTransaction(BaseModel):
+    id: str
+    user_id: str
+    amount: float
+    type: str
+    raw_vendor_name: str
+    vendor_name: str | None = None
+    shop_type: str = 'Anonymous'
+    tx_timestamp: str
+    description: str | None = None
+    is_synced: int | bool = 0
+    updated_at: str
+
+
+class SyncPushRequest(BaseModel):
+    transactions: list[SyncTransaction]
