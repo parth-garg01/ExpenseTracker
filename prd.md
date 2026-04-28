@@ -368,3 +368,33 @@ System must prioritize:
 * Scalability
 
 Avoid over-engineering UI or backend in early phases.
+
+---
+
+# 15. Offline-First Hybrid Architecture Update (2026-04-28)
+
+## Mandatory Extension
+
+1. Flutter local SQLite is the primary database.
+2. All UI rendering and business operations read/write local DB first.
+3. Backend acts as sync API only for multi-device consistency.
+
+## Sync Rules
+
+* Add `is_synced` and `updated_at` to sync-enabled records.
+* Trigger sync on app open and on new/edited transaction.
+* Push unsynced local records first, then pull remote updates.
+* Conflict resolution: latest `updated_at` wins.
+
+## Authentication for Sync
+
+* Basic user-scoped sync using `user_id` (header based in MVP).
+* All pushed/pulled data must be filtered by `user_id`.
+
+## Updated Sanity Checks
+
+1. SQLite DB connection
+2. Local CRUD operations
+3. Sync push test
+4. Sync pull test
+5. Conflict resolution test

@@ -1,6 +1,7 @@
 # Smart Expense Tracker
 
 Monorepo with Flutter mobile app + FastAPI backend as defined in PRD.
+Architecture is hybrid offline-first: SQLite local-first app data + backend sync APIs.
 
 ## Structure
 - `mobile/` Flutter client
