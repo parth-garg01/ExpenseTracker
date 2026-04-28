@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/transaction_item.dart';
 import '../services/transaction_repository.dart';
@@ -15,15 +14,37 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final repo = TransactionRepository();
+  List<TransactionItem> transactions = [];
   String _selectedShopType = 'All';
+  String _sort = 'latest';
+  final TextEditingController _amountController = TextEditingController();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await repo.seedIfEmpty();
+    await repo.syncNow();
+    await _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final amountGt = double.tryParse(_amountController.text.trim());
+    final latestFirst = _sort != 'oldest';
+    final data = await repo.all(shopType: _selectedShopType, amountGt: amountGt, latestFirst: latestFirst);
+    setState(() {
+      transactions = data;
+      _loading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final source = repo.all();
-    final transactions = _selectedShopType == 'All'
-        ? source
-        : source.where((e) => e.shopType == _selectedShopType).toList();
-
     final spent = transactions.where((e) => !e.isCredit).fold<double>(0, (a, b) => a + b.amount);
     final received = transactions.where((e) => e.isCredit).fold<double>(0, (a, b) => a + b.amount);
 
@@ -32,20 +53,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Smart Expense Tracker'),
+          actions: [
+            IconButton(
+              onPressed: () async {
+                await repo.syncNow();
+                await _load();
+              },
+              icon: const Icon(Icons.sync),
+            )
+          ],
           bottom: const TabBar(tabs: [Tab(text: 'Date'), Tab(text: 'Vendor'), Tab(text: 'Category')]),
         ),
-        body: TabBarView(
-          children: [
-            _dateView(transactions, spent, received),
-            _vendorView(transactions),
-            _categoryView(transactions),
-          ],
-        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                children: [
+                  _dateView(spent, received),
+                  _vendorView(),
+                  _categoryView(),
+                ],
+              ),
       ),
     );
   }
 
-  Widget _dateView(List<TransactionItem> transactions, double spent, double received) {
+  Widget _dateView(double spent, double received) {
     return Column(
       children: [
         Padding(
@@ -60,11 +92,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedShopType,
+                  items: const ['All', 'Anonymous', 'Shopping', 'Food', 'Travel', 'Salary']
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (v) async {
+                    setState(() => _selectedShopType = v ?? 'All');
+                    await _load();
+                  },
+                  decoration: const InputDecoration(labelText: 'Shop type'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Amount > X'),
+                  onSubmitted: (_) async => _load(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonFormField<String>(
-            value: _selectedShopType,
-            items: ['All', ...repo.shopTypes].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-            onChanged: (v) => setState(() => _selectedShopType = v ?? 'All'),
-            decoration: const InputDecoration(labelText: 'Filter by shop type'),
+            value: _sort,
+            items: const [
+              DropdownMenuItem(value: 'latest', child: Text('Latest first')),
+              DropdownMenuItem(value: 'oldest', child: Text('Oldest first')),
+            ],
+            onChanged: (v) async {
+              setState(() => _sort = v ?? 'latest');
+              await _load();
+            },
+            decoration: const InputDecoration(labelText: 'Sort by date'),
           ),
         ),
         Expanded(
@@ -81,9 +148,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     isScrollControlled: true,
                     builder: (_) => EditTransactionSheet(
                       tx: tx,
-                      shopTypes: repo.shopTypes,
-                      onSave: (vendorName, shopType, description) {
-                        setState(() => repo.updateClassification(tx, vendorName, shopType, description));
+                      shopTypes: const ['Anonymous', 'Shopping', 'Food', 'Travel', 'Salary'],
+                      onSave: (vendorName, shopType, description) async {
+                        await repo.updateClassification(tx, vendorName, shopType, description);
+                        await repo.syncNow();
+                        await _load();
                       },
                     ),
                   ),
@@ -96,7 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _vendorView(List<TransactionItem> transactions) {
+  Widget _vendorView() {
     final map = <String, double>{};
     for (final tx in transactions) {
       final key = tx.vendorName ?? tx.rawVendorName;
@@ -109,7 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _categoryView(List<TransactionItem> transactions) {
+  Widget _categoryView() {
     final map = <String, double>{};
     for (final tx in transactions) {
       map[tx.shopType] = (map[tx.shopType] ?? 0) + tx.amount;
