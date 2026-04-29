@@ -34,3 +34,13 @@ class SyncTransaction(BaseModel):
 
 class SyncPushRequest(BaseModel):
     transactions: list[SyncTransaction]
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=6)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str

@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.api.schemas import SmsIngestRequest, SyncPushRequest, VendorClassifyRequest
+from app.api.schemas import LoginRequest, RegisterRequest, SmsIngestRequest, SyncPushRequest, VendorClassifyRequest
+from app.core.auth import create_access_token, decode_access_token, hash_password, verify_password
 from app.db.deps import get_db
-from app.db.models import Transaction
+from app.db.models import Transaction, User
 from app.services.transactions import create_or_update_vendor, ingest_sms_transaction
 
 router = APIRouter(prefix='/api')
@@ -18,19 +19,46 @@ def health() -> dict[str, str]:
     return {'status': 'ok'}
 
 
-def _require_user(user_id: str | None) -> str:
-    if not user_id:
-        raise HTTPException(status_code=401, detail='Missing X-User-Id header')
-    return user_id
+def _require_user(authorization: str | None) -> str:
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail='Missing Bearer token')
+    token = authorization.split(' ', 1)[1]
+    try:
+        payload = decode_access_token(token)
+        return payload['sub']
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail='Invalid token') from exc
+
+
+@router.post('/auth/register')
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
+    existing = db.scalar(select(User).where(User.email == payload.email.lower().strip()))
+    if existing:
+        raise HTTPException(status_code=409, detail='Email already exists')
+    user = User(email=payload.email.lower().strip(), password_hash=hash_password(payload.password))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_access_token(str(user.id), user.email)
+    return {'access_token': token, 'token_type': 'bearer', 'user_id': str(user.id), 'email': user.email}
+
+
+@router.post('/auth/login')
+def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
+    user = db.scalar(select(User).where(User.email == payload.email.lower().strip()))
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_access_token(str(user.id), user.email)
+    return {'access_token': token, 'token_type': 'bearer', 'user_id': str(user.id), 'email': user.email}
 
 
 @router.post('/sync/push')
 def sync_push(
     payload: SyncPushRequest,
-    x_user_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
-    user_id = _require_user(x_user_id)
+    user_id = _require_user(authorization)
     updated = 0
     inserted = 0
 
@@ -77,10 +105,10 @@ def sync_push(
 @router.get('/sync/pull')
 def sync_pull(
     since: str | None = Query(default=None),
-    x_user_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
-    user_id = _require_user(x_user_id)
+    user_id = _require_user(authorization)
     stmt = select(Transaction).where(Transaction.user_id == uuid.UUID(user_id))
     if since:
         since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
