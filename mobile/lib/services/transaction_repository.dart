@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_item.dart';
+import 'auth_service.dart';
 import 'local_database.dart';
 import 'sync_service.dart';
 
@@ -11,9 +12,12 @@ class TransactionRepository {
   TransactionRepository({SyncService? syncService}) : _syncService = syncService ?? SyncService();
 
   final SyncService _syncService;
+  final AuthService _authService = AuthService();
 
-  String get userId =>
-      dotenv.env['API_KEY_02_USER_ID'] ?? '550e8400-e29b-41d4-a716-446655440000';
+  Future<String> get userId async =>
+      (await _authService.getSession())?['user_id'] ??
+      dotenv.env['API_KEY_02_USER_ID'] ??
+      '550e8400-e29b-41d4-a716-446655440000';
 
   Future<void> seedIfEmpty() async {
     final database = await LocalDatabase.instance.db;
@@ -21,10 +25,11 @@ class TransactionRepository {
     if (count > 0) return;
 
     final now = DateTime.now().toUtc();
+    final uid = await userId;
     final seed = [
       TransactionItem(
         id: _id(),
-        userId: userId,
+        userId: uid,
         amount: 499,
         type: 'debit',
         rawVendorName: 'AMZN INDIA',
@@ -35,7 +40,7 @@ class TransactionRepository {
       ),
       TransactionItem(
         id: _id(),
-        userId: userId,
+        userId: uid,
         amount: 25000,
         type: 'credit',
         rawVendorName: 'ACME PAYROLL',
@@ -46,7 +51,7 @@ class TransactionRepository {
       ),
       TransactionItem(
         id: _id(),
-        userId: userId,
+        userId: uid,
         amount: 150,
         type: 'debit',
         rawVendorName: 'UPI-XYZ-STORE',
@@ -71,8 +76,9 @@ class TransactionRepository {
     bool latestFirst = true,
   }) async {
     final database = await LocalDatabase.instance.db;
+    final uid = await userId;
     final where = <String>['user_id = ?'];
-    final args = <Object>[userId];
+    final args = <Object>[uid];
 
     if (shopType != null && shopType != 'All') {
       where.add('shop_type = ?');
@@ -104,6 +110,7 @@ class TransactionRepository {
 
   Future<void> updateClassification(TransactionItem tx, String vendorName, String shopType, String? description) async {
     final database = await LocalDatabase.instance.db;
+    final uid = await userId;
     final now = DateTime.now().toUtc();
     await database.update(
       'transactions',
@@ -115,7 +122,7 @@ class TransactionRepository {
         'updated_at': now.toIso8601String(),
       },
       where: 'id = ? AND user_id = ?',
-      whereArgs: [tx.id, userId],
+      whereArgs: [tx.id, uid],
     );
 
     final nowIso = now.toIso8601String();
@@ -123,7 +130,7 @@ class TransactionRepository {
       'vendor_rules',
       {
         'normalized_raw_vendor_name': _normalize(tx.rawVendorName),
-        'user_id': userId,
+        'user_id': uid,
         'vendor_name': vendorName.trim().isEmpty ? tx.rawVendorName : vendorName.trim(),
         'shop_type': shopType,
         'is_synced': 0,
@@ -135,10 +142,11 @@ class TransactionRepository {
 
   Future<void> addLocal(TransactionItem tx) async {
     final database = await LocalDatabase.instance.db;
+    final uid = await userId;
     final rules = await database.query(
       'vendor_rules',
       where: 'normalized_raw_vendor_name = ? AND user_id = ?',
-      whereArgs: [_normalize(tx.rawVendorName), userId],
+      whereArgs: [_normalize(tx.rawVendorName), uid],
       limit: 1,
     );
     if (rules.isNotEmpty) {
@@ -153,20 +161,21 @@ class TransactionRepository {
 
   Future<void> syncNow() async {
     final database = await LocalDatabase.instance.db;
-    final unsyncedRows = await database.query('transactions', where: 'user_id = ? AND is_synced = 0', whereArgs: [userId]);
+    final uid = await userId;
+    final unsyncedRows = await database.query('transactions', where: 'user_id = ? AND is_synced = 0', whereArgs: [uid]);
     final unsynced = unsyncedRows.map(TransactionItem.fromMap).toList();
 
-    await _syncService.pushChanges(userId, unsynced);
+    await _syncService.pushChanges(uid, unsynced);
 
     if (unsynced.isNotEmpty) {
-      await database.update('transactions', {'is_synced': 1}, where: 'user_id = ? AND is_synced = 0', whereArgs: [userId]);
+      await database.update('transactions', {'is_synced': 1}, where: 'user_id = ? AND is_synced = 0', whereArgs: [uid]);
     }
 
     final since = await _lastSyncTime(database);
-    final remote = await _syncService.pullChanges(userId, since);
+    final remote = await _syncService.pullChanges(uid, since);
     for (final raw in remote) {
       final incoming = TransactionItem.fromMap(raw);
-      final local = await database.query('transactions', where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, userId], limit: 1);
+      final local = await database.query('transactions', where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, uid], limit: 1);
 
       if (local.isEmpty) {
         await database.insert('transactions', incoming.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
@@ -175,13 +184,14 @@ class TransactionRepository {
 
       final localTx = TransactionItem.fromMap(local.first);
       if (incoming.updatedAt.isAfter(localTx.updatedAt)) {
-        await database.update('transactions', incoming.toMap(), where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, userId]);
+        await database.update('transactions', incoming.toMap(), where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, uid]);
       }
     }
   }
 
   Future<String?> _lastSyncTime(Database database) async {
-    final rows = await database.rawQuery('SELECT MAX(updated_at) as last_time FROM transactions WHERE user_id = ?', [userId]);
+    final uid = await userId;
+    final rows = await database.rawQuery('SELECT MAX(updated_at) as last_time FROM transactions WHERE user_id = ?', [uid]);
     if (rows.isEmpty) return null;
     return rows.first['last_time'] as String?;
   }

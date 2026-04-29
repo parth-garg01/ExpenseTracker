@@ -6,7 +6,8 @@ import '../widgets/edit_transaction_sheet.dart';
 import '../widgets/transaction_tile.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, required this.onLogout});
+  final VoidCallback onLogout;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -54,6 +55,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: const Text('Smart Expense Tracker'),
           actions: [
+            IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout)),
             IconButton(
               onPressed: () async {
                 await repo.syncNow();
