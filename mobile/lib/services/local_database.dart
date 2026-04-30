@@ -45,6 +45,13 @@ class LocalDatabase {
             updated_at TEXT NOT NULL
           )
         ''');
+        await database.execute('''
+          CREATE TABLE sms_ingest_log (
+            sms_key TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          )
+        ''');
       },
     );
   }

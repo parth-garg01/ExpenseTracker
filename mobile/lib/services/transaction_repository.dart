@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_item.dart';
+import '../models/parsed_sms_transaction.dart';
 import 'auth_service.dart';
 import 'local_database.dart';
 import 'sync_service.dart';
@@ -159,6 +160,43 @@ class TransactionRepository {
     await database.insert('transactions', tx.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<int> ingestParsedSms(List<ParsedSmsTransaction> smsRows) async {
+    final database = await LocalDatabase.instance.db;
+    final uid = await userId;
+    var inserted = 0;
+
+    for (final sms in smsRows) {
+      final smsKey = _smsKey(sms);
+      final seen = await database.query(
+        'sms_ingest_log',
+        where: 'sms_key = ? AND user_id = ?',
+        whereArgs: [smsKey, uid],
+        limit: 1,
+      );
+      if (seen.isNotEmpty) continue;
+
+      final tx = TransactionItem(
+        id: _id(),
+        userId: uid,
+        amount: sms.amount,
+        type: sms.type,
+        rawVendorName: sms.rawVendorName,
+        timestamp: sms.timestamp,
+        updatedAt: DateTime.now().toUtc(),
+        description: 'Imported from SMS',
+      );
+      await addLocal(tx);
+      await database.insert(
+        'sms_ingest_log',
+        {'sms_key': smsKey, 'user_id': uid, 'created_at': DateTime.now().toUtc().toIso8601String()},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      inserted += 1;
+    }
+
+    return inserted;
+  }
+
   Future<void> syncNow() async {
     final database = await LocalDatabase.instance.db;
     final uid = await userId;
@@ -204,5 +242,9 @@ class TransactionRepository {
 
   String _normalize(String input) {
     return input.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').replaceAll(RegExp(r'\\s+'), ' ').trim();
+  }
+
+  String _smsKey(ParsedSmsTransaction sms) {
+    return '${sms.sender}|${sms.timestamp.millisecondsSinceEpoch}|${sms.body.hashCode}';
   }
 }

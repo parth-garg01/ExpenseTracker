@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/transaction_item.dart';
 import '../services/transaction_repository.dart';
+import '../services/sms_import_service.dart';
 import '../widgets/edit_transaction_sheet.dart';
 import '../widgets/transaction_tile.dart';
 
@@ -15,6 +16,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final repo = TransactionRepository();
+  final smsImport = SmsImportService();
   List<TransactionItem> transactions = [];
   String _selectedShopType = 'All';
   String _sort = 'latest';
@@ -56,6 +58,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
           title: const Text('Smart Expense Tracker'),
           actions: [
             IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout)),
+            IconButton(
+              onPressed: () async {
+                final granted = await smsImport.ensureSmsPermission();
+                if (!granted) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('SMS permission denied. Please allow to import transactions.')),
+                  );
+                  return;
+                }
+                final rows = await smsImport.fetchRecentTransactions();
+                final inserted = await repo.ingestParsedSms(rows);
+                await repo.syncNow();
+                await _load();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('SMS import complete: $inserted transaction(s) added.')),
+                );
+              },
+              icon: const Icon(Icons.sms),
+              tooltip: 'Import SMS',
+            ),
             IconButton(
               onPressed: () async {
                 await repo.syncNow();
