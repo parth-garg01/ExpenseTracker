@@ -31,8 +31,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _bootstrap() async {
     await repo.seedIfEmpty();
+    await _autoImportSmsOnOpen();
+    await smsImport.startIncomingSmsListener(
+      onForegroundTransaction: (tx) async {
+        await repo.ingestParsedSms([tx]);
+        await repo.syncNow();
+        if (!mounted) return;
+        await _load();
+      },
+    );
     await repo.syncNow();
     await _load();
+  }
+
+  Future<void> _autoImportSmsOnOpen() async {
+    final granted = await smsImport.ensureSmsPermission();
+    if (!granted) return;
+    final pending = await smsImport.consumePendingBackgroundSms();
+    final recent = await smsImport.fetchRecentTransactions();
+    await repo.ingestParsedSms([...pending, ...recent]);
   }
 
   Future<void> _load() async {
