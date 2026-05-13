@@ -21,6 +21,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _sort = 'latest';
   final TextEditingController _amountController = TextEditingController();
   bool _loading = true;
+  static const List<String> _defaultShopTypes = ['Anonymous', 'Shopping', 'Food', 'Travel', 'Salary'];
 
   @override
   void initState() {
@@ -64,6 +65,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final spent = transactions.where((e) => !e.isCredit).fold<double>(0, (a, b) => a + b.amount);
     final received = transactions.where((e) => e.isCredit).fold<double>(0, (a, b) => a + b.amount);
+    final dynamicShopTypes = {
+      ..._defaultShopTypes,
+      ...transactions.map((tx) => tx.shopType).where((type) => type.trim().isNotEmpty),
+    }.toList()
+      ..sort();
+    final filterShopTypes = ['All', ...dynamicShopTypes];
 
     return DefaultTabController(
       length: 3,
@@ -139,7 +146,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _selectedShopType,
-                  items: const ['All', 'Anonymous', 'Shopping', 'Food', 'Travel', 'Salary']
+                  items: filterShopTypes
                       .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                       .toList(),
                   onChanged: (v) async {
@@ -190,7 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     isScrollControlled: true,
                     builder: (_) => EditTransactionSheet(
                       tx: tx,
-                      shopTypes: const ['Anonymous', 'Shopping', 'Food', 'Travel', 'Salary'],
+                      shopTypes: dynamicShopTypes,
                       onSave: (vendorName, shopType, description) async {
                         await repo.updateClassification(tx, vendorName, shopType, description);
                         await _load();

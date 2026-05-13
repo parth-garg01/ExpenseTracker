@@ -21,6 +21,7 @@ class EditTransactionSheet extends StatefulWidget {
 class _EditTransactionSheetState extends State<EditTransactionSheet> {
   late final TextEditingController _vendorController;
   late final TextEditingController _descriptionController;
+  final TextEditingController _newShopTypeController = TextEditingController();
   late String _shopType;
 
   @override
@@ -45,11 +46,21 @@ class _EditTransactionSheetState extends State<EditTransactionSheet> {
             onChanged: (value) => setState(() => _shopType = value ?? 'Anonymous'),
             decoration: const InputDecoration(labelText: 'Shop type'),
           ),
+          TextField(
+            controller: _newShopTypeController,
+            decoration: const InputDecoration(labelText: 'New shop type (optional)'),
+          ),
           TextField(controller: _descriptionController, decoration: const InputDecoration(labelText: 'Description (optional)')),
           const SizedBox(height: 12),
           ElevatedButton(
             onPressed: () {
-              widget.onSave(_vendorController.text, _shopType, _descriptionController.text.isEmpty ? null : _descriptionController.text);
+              final customType = _newShopTypeController.text.trim();
+              final resolvedShopType = customType.isEmpty ? _shopType : customType;
+              widget.onSave(
+                _vendorController.text,
+                resolvedShopType,
+                _descriptionController.text.isEmpty ? null : _descriptionController.text,
+              );
               Navigator.pop(context);
             },
             child: const Text('Save'),
