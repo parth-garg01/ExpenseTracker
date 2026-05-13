@@ -9,6 +9,36 @@ import '../models/parsed_sms_transaction.dart';
 class SmsImportService {
   final Telephony _telephony = Telephony.instance;
   static const _pendingKey = 'pending_sms_events_v1';
+  static final RegExp _amountRegex = RegExp(r'(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)', caseSensitive: false);
+  static final RegExp _vendorRegex = RegExp(r'(?:to|at|from)\s+([A-Za-z0-9 _\-.]{2,40})', caseSensitive: false);
+  static const List<String> _txKeywords = [
+    'debited',
+    'credited',
+    'spent',
+    'received',
+    'paid',
+    'upi',
+    'imps',
+    'neft',
+    'rtgs',
+    'a/c',
+    'account',
+  ];
+  static const List<String> _noiseKeywords = [
+    'offer',
+    'cashback',
+    'discount',
+    'reward',
+    'coupon',
+    'sale',
+    'win',
+    'loan',
+    'credit card',
+    'policy',
+    'insurance',
+    'otp',
+    'verification',
+  ];
 
   Future<bool> ensureSmsPermission() async {
     final status = await Permission.sms.request();
@@ -39,7 +69,7 @@ class SmsImportService {
   }) async {
     final granted = await Permission.sms.isGranted;
     if (!granted) return;
-    await _telephony.listenIncomingSms(
+    _telephony.listenIncomingSms(
       onNewMessage: (SmsMessage sms) {
         final tx = _parseSms(
           sender: sms.address ?? 'UNKNOWN',
@@ -105,16 +135,15 @@ class SmsImportService {
     final sender = sms.address ?? 'UNKNOWN';
     final body = sms.body ?? '';
     final lower = body.toLowerCase();
-    final hasTxKeyword = lower.contains('debited') || lower.contains('credited') || lower.contains('spent') || lower.contains('received') || lower.contains('paid');
-    if (!hasTxKeyword) return null;
-    final amountRegex = RegExp(r'(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)', caseSensitive: false);
-    final amountMatch = amountRegex.firstMatch(body);
+    final hasTxKeyword = _txKeywords.any(lower.contains);
+    final looksLikeNoise = _noiseKeywords.any(lower.contains) && !lower.contains('debited') && !lower.contains('credited') && !lower.contains('upi');
+    if (!hasTxKeyword || looksLikeNoise) return null;
+    final amountMatch = _amountRegex.firstMatch(body);
     if (amountMatch == null) return null;
     final amount = double.tryParse(amountMatch.group(1) ?? '');
     if (amount == null) return null;
     final type = (lower.contains('credited') || lower.contains('received')) ? 'credit' : 'debit';
-    final vendorRegex = RegExp(r'(?:to|at|from)\s+([A-Za-z0-9 _\-.]{2,40})', caseSensitive: false);
-    final vendorMatch = vendorRegex.firstMatch(body);
+    final vendorMatch = _vendorRegex.firstMatch(body);
     final vendor = (vendorMatch?.group(1)?.trim().isNotEmpty ?? false) ? vendorMatch!.group(1)!.trim() : sender;
     return ParsedSmsTransaction(
       sender: sender,
@@ -128,11 +157,11 @@ class SmsImportService {
 
   ParsedSmsTransaction? _parseSms({required String sender, required String body, required int epochMs}) {
     final lower = body.toLowerCase();
-    final hasTxKeyword = lower.contains('debited') || lower.contains('credited') || lower.contains('spent') || lower.contains('received') || lower.contains('paid');
-    if (!hasTxKeyword) return null;
+    final hasTxKeyword = _txKeywords.any(lower.contains);
+    final looksLikeNoise = _noiseKeywords.any(lower.contains) && !lower.contains('debited') && !lower.contains('credited') && !lower.contains('upi');
+    if (!hasTxKeyword || looksLikeNoise) return null;
 
-    final amountRegex = RegExp(r'(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)', caseSensitive: false);
-    final amountMatch = amountRegex.firstMatch(body);
+    final amountMatch = _amountRegex.firstMatch(body);
     if (amountMatch == null) return null;
 
     final amount = double.tryParse(amountMatch.group(1) ?? '');
@@ -140,8 +169,7 @@ class SmsImportService {
 
     final type = (lower.contains('credited') || lower.contains('received')) ? 'credit' : 'debit';
 
-    final vendorRegex = RegExp(r'(?:to|at|from)\s+([A-Za-z0-9 _\-.]{2,40})', caseSensitive: false);
-    final vendorMatch = vendorRegex.firstMatch(body);
+    final vendorMatch = _vendorRegex.firstMatch(body);
     final vendor = (vendorMatch?.group(1)?.trim().isNotEmpty ?? false) ? vendorMatch!.group(1)!.trim() : sender;
 
     return ParsedSmsTransaction(
