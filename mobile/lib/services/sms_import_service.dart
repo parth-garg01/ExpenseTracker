@@ -9,36 +9,13 @@ import '../models/parsed_sms_transaction.dart';
 class SmsImportService {
   final Telephony _telephony = Telephony.instance;
   static const _pendingKey = 'pending_sms_events_v1';
-  static final RegExp _amountRegex = RegExp(r'(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)', caseSensitive: false);
-  static final RegExp _vendorRegex = RegExp(r'(?:to|at|from)\s+([A-Za-z0-9 _\-.]{2,40})', caseSensitive: false);
-  static const List<String> _txKeywords = [
-    'debited',
-    'credited',
-    'spent',
-    'received',
-    'paid',
-    'upi',
-    'imps',
-    'neft',
-    'rtgs',
-    'a/c',
-    'account',
-  ];
-  static const List<String> _noiseKeywords = [
-    'offer',
-    'cashback',
-    'discount',
-    'reward',
-    'coupon',
-    'sale',
-    'win',
-    'loan',
-    'credit card',
-    'policy',
-    'insurance',
-    'otp',
-    'verification',
-  ];
+  static final RegExp _strictUpiBankAlert = RegExp(
+    r'(?i)\b(?:icici|hdfc|sbi|axis|kotak|bank)\b.*\bacct\b.*\bdebited\b.*\bupi:\d+',
+  );
+  static final RegExp _debitedAmountRegex = RegExp(
+    r'(?i)\bdebited\s+for\s+(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)',
+  );
+  static final RegExp _creditedPartyRegex = RegExp(r';\s*([^;]+?)\s+credited\.', caseSensitive: false);
 
   Future<bool> ensureSmsPermission() async {
     final status = await Permission.sms.request();
@@ -135,15 +112,13 @@ class SmsImportService {
     final sender = sms.address ?? 'UNKNOWN';
     final body = sms.body ?? '';
     final lower = body.toLowerCase();
-    final hasTxKeyword = _txKeywords.any(lower.contains);
-    final looksLikeNoise = _noiseKeywords.any(lower.contains) && !lower.contains('debited') && !lower.contains('credited') && !lower.contains('upi');
-    if (!hasTxKeyword || looksLikeNoise) return null;
-    final amountMatch = _amountRegex.firstMatch(body);
+    if (!_strictUpiBankAlert.hasMatch(body)) return null;
+    final amountMatch = _debitedAmountRegex.firstMatch(body);
     if (amountMatch == null) return null;
     final amount = double.tryParse(amountMatch.group(1) ?? '');
     if (amount == null) return null;
-    final type = (lower.contains('credited') || lower.contains('received')) ? 'credit' : 'debit';
-    final vendorMatch = _vendorRegex.firstMatch(body);
+    final type = lower.contains('debited') ? 'debit' : 'credit';
+    final vendorMatch = _creditedPartyRegex.firstMatch(body);
     final vendor = (vendorMatch?.group(1)?.trim().isNotEmpty ?? false) ? vendorMatch!.group(1)!.trim() : sender;
     return ParsedSmsTransaction(
       sender: sender,
@@ -157,19 +132,17 @@ class SmsImportService {
 
   ParsedSmsTransaction? _parseSms({required String sender, required String body, required int epochMs}) {
     final lower = body.toLowerCase();
-    final hasTxKeyword = _txKeywords.any(lower.contains);
-    final looksLikeNoise = _noiseKeywords.any(lower.contains) && !lower.contains('debited') && !lower.contains('credited') && !lower.contains('upi');
-    if (!hasTxKeyword || looksLikeNoise) return null;
+    if (!_strictUpiBankAlert.hasMatch(body)) return null;
 
-    final amountMatch = _amountRegex.firstMatch(body);
+    final amountMatch = _debitedAmountRegex.firstMatch(body);
     if (amountMatch == null) return null;
 
     final amount = double.tryParse(amountMatch.group(1) ?? '');
     if (amount == null) return null;
 
-    final type = (lower.contains('credited') || lower.contains('received')) ? 'credit' : 'debit';
+    final type = lower.contains('debited') ? 'debit' : 'credit';
 
-    final vendorMatch = _vendorRegex.firstMatch(body);
+    final vendorMatch = _creditedPartyRegex.firstMatch(body);
     final vendor = (vendorMatch?.group(1)?.trim().isNotEmpty ?? false) ? vendorMatch!.group(1)!.trim() : sender;
 
     return ParsedSmsTransaction(
