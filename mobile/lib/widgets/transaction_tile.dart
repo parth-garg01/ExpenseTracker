@@ -8,16 +8,19 @@ class TransactionTile extends StatelessWidget {
     super.key,
     required this.tx,
     required this.onTap,
+    this.onLongPress,
   });
 
   final TransactionItem tx;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final amountColor = tx.isCredit ? Colors.green : Colors.red;
     return ListTile(
       onTap: onTap,
+      onLongPress: onLongPress,
       title: Text(tx.vendorName ?? tx.rawVendorName),
       subtitle: Text('${tx.shopType} • ${DateFormat('dd MMM, hh:mm a').format(tx.timestamp)}'),
       trailing: Text(

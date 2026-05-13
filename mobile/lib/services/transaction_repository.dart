@@ -196,6 +196,37 @@ class TransactionRepository {
     return;
   }
 
+  Future<void> addManualTransaction({
+    required double amount,
+    required String type,
+    required String rawVendorName,
+    String? vendorName,
+    required String shopType,
+    String? description,
+    DateTime? timestamp,
+  }) async {
+    final tx = TransactionItem(
+      id: _id(),
+      userId: await userId,
+      amount: amount,
+      type: type,
+      rawVendorName: rawVendorName,
+      vendorName: vendorName,
+      shopType: shopType,
+      description: description,
+      timestamp: (timestamp ?? DateTime.now()).toUtc(),
+      updatedAt: DateTime.now().toUtc(),
+      isSynced: false,
+    );
+    await addLocal(tx);
+  }
+
+  Future<void> deleteTransaction(String transactionId) async {
+    final database = await LocalDatabase.instance.db;
+    final uid = await userId;
+    await database.delete('transactions', where: 'id = ? AND user_id = ?', whereArgs: [transactionId, uid]);
+  }
+
   Future<String> exportTransactionsCsv() async {
     final database = await LocalDatabase.instance.db;
     final uid = await userId;

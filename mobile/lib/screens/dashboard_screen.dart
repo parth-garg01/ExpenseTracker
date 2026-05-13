@@ -20,6 +20,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedShopType = 'All';
   String _sort = 'latest';
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _dateSearchController = TextEditingController();
+  final TextEditingController _vendorSearchController = TextEditingController();
+  final TextEditingController _categorySearchController = TextEditingController();
   bool _loading = true;
   static const List<String> _defaultShopTypes = ['Anonymous', 'Shopping', 'Food', 'Travel', 'Salary'];
 
@@ -62,6 +65,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
+  void dispose() {
+    _amountController.dispose();
+    _dateSearchController.dispose();
+    _vendorSearchController.dispose();
+    _categorySearchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final spent = transactions.where((e) => !e.isCredit).fold<double>(0, (a, b) => a + b.amount);
     final received = transactions.where((e) => e.isCredit).fold<double>(0, (a, b) => a + b.amount);
@@ -70,7 +82,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Smart Expense Tracker'),
+          leading: Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              child: Text(
+                'SS',
+                style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          title: const Text('SpendSage'),
           actions: [
             IconButton(
               onPressed: () async {
@@ -107,6 +129,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
           bottom: const TabBar(tabs: [Tab(text: 'Date'), Tab(text: 'Vendor'), Tab(text: 'Category')]),
         ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openAddExpenseSheet,
+          icon: const Icon(Icons.add),
+          label: const Text('Add Expense'),
+        ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(
@@ -128,6 +155,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ..sort();
     final filterShopTypes = ['All', ...dynamicShopTypes];
 
+    final dateQuery = _dateSearchController.text.trim().toLowerCase();
+    final filteredTransactions = dateQuery.isEmpty
+        ? transactions
+        : transactions.where((tx) {
+            final vendor = (tx.vendorName ?? tx.rawVendorName).toLowerCase();
+            final category = tx.shopType.toLowerCase();
+            return vendor.contains(dateQuery) || category.contains(dateQuery);
+          }).toList();
+
     return Column(
       children: [
         Padding(
@@ -141,7 +177,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _dateSearchController,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Search date tab',
+              prefixIcon: Icon(Icons.search),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               Expanded(
@@ -186,13 +233,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         Expanded(
           child: ListView.builder(
-            itemCount: transactions.length,
+            itemCount: filteredTransactions.length,
             itemBuilder: (context, index) {
-              final tx = transactions[index];
+              final tx = filteredTransactions[index];
               return Card(
                 color: tx.isClassified ? null : Colors.yellow.shade100,
                 child: TransactionTile(
                   tx: tx,
+                  onLongPress: () => _confirmDelete(tx),
                   onTap: () => showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
@@ -215,35 +263,157 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _vendorView() {
-    final map = <String, double>{};
+    final map = <String, ({double total, DateTime latest})>{};
     for (final tx in transactions) {
       final key = tx.vendorName ?? tx.rawVendorName;
-      map[key] = (map[key] ?? 0) + tx.amount;
+      final existing = map[key];
+      map[key] = (
+        total: (existing?.total ?? 0) + tx.amount,
+        latest: existing == null || tx.timestamp.isAfter(existing.latest) ? tx.timestamp : existing.latest
+      );
     }
+    final query = _vendorSearchController.text.trim().toLowerCase();
+    final entries = map.entries
+        .where((e) => query.isEmpty || e.key.toLowerCase().contains(query))
+        .toList()
+      ..sort((a, b) => b.value.latest.compareTo(a.value.latest));
     return ListView(
-      children: map.entries
-          .map((e) => ListTile(title: Text(e.key), trailing: Text('₹${e.value.toStringAsFixed(2)}')))
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _vendorSearchController,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Search vendor', prefixIcon: Icon(Icons.search)),
+          ),
+        ),
+        ...entries
+          .map((e) => ListTile(title: Text(e.key), trailing: Text('₹${e.value.total.toStringAsFixed(2)}')))
           .toList(),
+      ],
     );
   }
 
   Widget _categoryView() {
-    final map = <String, double>{};
+    final map = <String, ({double total, DateTime latest})>{};
     for (final tx in transactions) {
-      map[tx.shopType] = (map[tx.shopType] ?? 0) + tx.amount;
+      final existing = map[tx.shopType];
+      map[tx.shopType] = (
+        total: (existing?.total ?? 0) + tx.amount,
+        latest: existing == null || tx.timestamp.isAfter(existing.latest) ? tx.timestamp : existing.latest
+      );
     }
+    final query = _categorySearchController.text.trim().toLowerCase();
+    final entries = map.entries
+        .where((e) => query.isEmpty || e.key.toLowerCase().contains(query))
+        .toList()
+      ..sort((a, b) => b.value.latest.compareTo(a.value.latest));
     return ListView(
-      children: map.entries
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            controller: _categorySearchController,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(labelText: 'Search category', prefixIcon: Icon(Icons.search)),
+          ),
+        ),
+        ...entries
           .map(
             (e) => ListTile(
               title: Text(e.key),
               trailing: Text(
-                '₹${e.value.toStringAsFixed(2)}',
+                '₹${e.value.total.toStringAsFixed(2)}',
                 style: TextStyle(color: e.key == 'Salary' ? Colors.green : Colors.red),
               ),
             ),
           )
           .toList(),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(TransactionItem tx) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete transaction?'),
+        content: Text('Delete ${tx.vendorName ?? tx.rawVendorName} for ₹${tx.amount.toStringAsFixed(2)}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+    await repo.deleteTransaction(tx.id);
+    await _load();
+  }
+
+  Future<void> _openAddExpenseSheet() async {
+    final amountController = TextEditingController();
+    final vendorController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final customTypeController = TextEditingController();
+    var isCredit = false;
+    var selectedType = 'Anonymous';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setInnerState) => Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Add Transaction', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount'),
+                ),
+                TextField(controller: vendorController, decoration: const InputDecoration(labelText: 'Shop/Vendor')),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  items: _defaultShopTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (v) => setInnerState(() => selectedType = v ?? 'Anonymous'),
+                  decoration: const InputDecoration(labelText: 'Shop type'),
+                ),
+                TextField(controller: customTypeController, decoration: const InputDecoration(labelText: 'New shop type (optional)')),
+                TextField(controller: descriptionController, decoration: const InputDecoration(labelText: 'Description (optional)')),
+                SwitchListTile(
+                  value: isCredit,
+                  title: const Text('Mark as income'),
+                  onChanged: (value) => setInnerState(() => isCredit = value),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () async {
+                    final amount = double.tryParse(amountController.text.trim());
+                    final rawVendor = vendorController.text.trim();
+                    if (amount == null || amount <= 0 || rawVendor.isEmpty) return;
+                    final resolvedType = customTypeController.text.trim().isEmpty ? selectedType : customTypeController.text.trim();
+                    await repo.addManualTransaction(
+                      amount: amount,
+                      type: isCredit ? 'credit' : 'debit',
+                      rawVendorName: rawVendor,
+                      vendorName: rawVendor,
+                      shopType: resolvedType,
+                      description: descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+                    );
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    await _load();
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
