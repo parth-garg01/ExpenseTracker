@@ -34,38 +34,42 @@ class _EditTransactionSheetState extends State<EditTransactionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: _vendorController, decoration: const InputDecoration(labelText: 'Shop name')),
-          DropdownButtonFormField<String>(
-            value: _shopType,
-            items: widget.shopTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-            onChanged: (value) => setState(() => _shopType = value ?? 'Anonymous'),
-            decoration: const InputDecoration(labelText: 'Shop type'),
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: _vendorController, decoration: const InputDecoration(labelText: 'Shop name')),
+              DropdownButtonFormField<String>(
+                value: _shopType,
+                items: widget.shopTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (value) => setState(() => _shopType = value ?? 'Anonymous'),
+                decoration: const InputDecoration(labelText: 'Shop type'),
+              ),
+              TextField(
+                controller: _newShopTypeController,
+                decoration: const InputDecoration(labelText: 'New shop type (optional)'),
+              ),
+              TextField(controller: _descriptionController, decoration: const InputDecoration(labelText: 'Description (optional)')),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () {
+                  final customType = _newShopTypeController.text.trim();
+                  final resolvedShopType = customType.isEmpty ? _shopType : customType;
+                  widget.onSave(
+                    _vendorController.text,
+                    resolvedShopType,
+                    _descriptionController.text.isEmpty ? null : _descriptionController.text,
+                  );
+                  Navigator.pop(context);
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-          TextField(
-            controller: _newShopTypeController,
-            decoration: const InputDecoration(labelText: 'New shop type (optional)'),
-          ),
-          TextField(controller: _descriptionController, decoration: const InputDecoration(labelText: 'Description (optional)')),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: () {
-              final customType = _newShopTypeController.text.trim();
-              final resolvedShopType = customType.isEmpty ? _shopType : customType;
-              widget.onSave(
-                _vendorController.text,
-                resolvedShopType,
-                _descriptionController.text.isEmpty ? null : _descriptionController.text,
-              );
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+        ),
       ),
     );
   }
