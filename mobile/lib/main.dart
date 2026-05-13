@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,9 +17,7 @@ class ExpenseTrackerApp extends StatefulWidget {
 }
 
 class _ExpenseTrackerAppState extends State<ExpenseTrackerApp> {
-  final AuthService _authService = AuthService();
   bool _ready = false;
-  bool _loggedIn = false;
 
   @override
   void initState() {
@@ -30,10 +26,8 @@ class _ExpenseTrackerAppState extends State<ExpenseTrackerApp> {
   }
 
   Future<void> _init() async {
-    final session = await _authService.getSession();
     if (!mounted) return;
     setState(() {
-      _loggedIn = session != null;
       _ready = true;
     });
   }
@@ -48,19 +42,7 @@ class _ExpenseTrackerAppState extends State<ExpenseTrackerApp> {
       ),
       home: !_ready
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _loggedIn
-              ? DashboardScreen(
-                  onLogout: () async {
-                    await _authService.logout();
-                    if (!mounted) return;
-                    setState(() => _loggedIn = false);
-                  },
-                )
-              : AuthScreen(
-                  onAuthenticated: () {
-                    setState(() => _loggedIn = true);
-                  },
-                ),
+          : const DashboardScreen(),
     );
   }
 }

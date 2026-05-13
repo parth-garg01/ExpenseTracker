@@ -7,8 +7,7 @@ import '../widgets/edit_transaction_sheet.dart';
 import '../widgets/transaction_tile.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.onLogout});
-  final VoidCallback onLogout;
+  const DashboardScreen({super.key});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -35,12 +34,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await smsImport.startIncomingSmsListener(
       onForegroundTransaction: (tx) async {
         await repo.ingestParsedSms([tx]);
-        await repo.syncNow();
         if (!mounted) return;
         await _load();
       },
     );
-    await repo.syncNow();
     await _load();
   }
 
@@ -74,7 +71,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: const Text('Smart Expense Tracker'),
           actions: [
-            IconButton(onPressed: widget.onLogout, icon: const Icon(Icons.logout)),
             IconButton(
               onPressed: () async {
                 final granted = await smsImport.ensureSmsPermission();
@@ -87,7 +83,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 }
                 final rows = await smsImport.fetchRecentTransactions();
                 final inserted = await repo.ingestParsedSms(rows);
-                await repo.syncNow();
                 await _load();
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -99,10 +94,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             IconButton(
               onPressed: () async {
-                await repo.syncNow();
-                await _load();
+                final exportPath = await repo.exportTransactionsCsv();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('CSV exported: $exportPath')),
+                );
               },
-              icon: const Icon(Icons.sync),
+              icon: const Icon(Icons.download),
+              tooltip: 'Export CSV',
             )
           ],
           bottom: const TabBar(tabs: [Tab(text: 'Date'), Tab(text: 'Vendor'), Tab(text: 'Category')]),
@@ -194,7 +193,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       shopTypes: const ['Anonymous', 'Shopping', 'Food', 'Travel', 'Salary'],
                       onSave: (vendorName, shopType, description) async {
                         await repo.updateClassification(tx, vendorName, shopType, description);
-                        await repo.syncNow();
                         await _load();
                       },
                     ),

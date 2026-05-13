@@ -1,24 +1,19 @@
 import 'dart:math';
+import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_item.dart';
 import '../models/parsed_sms_transaction.dart';
-import 'auth_service.dart';
 import 'local_database.dart';
-import 'sync_service.dart';
 
 class TransactionRepository {
-  TransactionRepository({SyncService? syncService}) : _syncService = syncService ?? SyncService();
-
-  final SyncService _syncService;
-  final AuthService _authService = AuthService();
+  TransactionRepository();
 
   Future<String> get userId async =>
-      (await _authService.getSession())?['user_id'] ??
-      dotenv.env['API_KEY_02_USER_ID'] ??
-      '550e8400-e29b-41d4-a716-446655440000';
+      dotenv.env['API_KEY_02_USER_ID'] ?? '550e8400-e29b-41d4-a716-446655440000';
 
   Future<void> seedIfEmpty() async {
     final database = await LocalDatabase.instance.db;
@@ -198,40 +193,42 @@ class TransactionRepository {
   }
 
   Future<void> syncNow() async {
-    final database = await LocalDatabase.instance.db;
-    final uid = await userId;
-    final unsyncedRows = await database.query('transactions', where: 'user_id = ? AND is_synced = 0', whereArgs: [uid]);
-    final unsynced = unsyncedRows.map(TransactionItem.fromMap).toList();
-
-    await _syncService.pushChanges(uid, unsynced);
-
-    if (unsynced.isNotEmpty) {
-      await database.update('transactions', {'is_synced': 1}, where: 'user_id = ? AND is_synced = 0', whereArgs: [uid]);
-    }
-
-    final since = await _lastSyncTime(database);
-    final remote = await _syncService.pullChanges(uid, since);
-    for (final raw in remote) {
-      final incoming = TransactionItem.fromMap(raw);
-      final local = await database.query('transactions', where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, uid], limit: 1);
-
-      if (local.isEmpty) {
-        await database.insert('transactions', incoming.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
-        continue;
-      }
-
-      final localTx = TransactionItem.fromMap(local.first);
-      if (incoming.updatedAt.isAfter(localTx.updatedAt)) {
-        await database.update('transactions', incoming.toMap(), where: 'id = ? AND user_id = ?', whereArgs: [incoming.id, uid]);
-      }
-    }
+    return;
   }
 
-  Future<String?> _lastSyncTime(Database database) async {
+  Future<String> exportTransactionsCsv() async {
+    final database = await LocalDatabase.instance.db;
     final uid = await userId;
-    final rows = await database.rawQuery('SELECT MAX(updated_at) as last_time FROM transactions WHERE user_id = ?', [uid]);
-    if (rows.isEmpty) return null;
-    return rows.first['last_time'] as String?;
+    final rows = await database.query(
+      'transactions',
+      where: 'user_id = ?',
+      whereArgs: [uid],
+      orderBy: 'tx_timestamp DESC',
+    );
+
+    final buffer = StringBuffer();
+    buffer.writeln('id,user_id,amount,type,raw_vendor_name,vendor_name,shop_type,tx_timestamp,description,is_synced,updated_at');
+    for (final row in rows) {
+      buffer.writeln([
+        _csv(row['id']),
+        _csv(row['user_id']),
+        _csv(row['amount']),
+        _csv(row['type']),
+        _csv(row['raw_vendor_name']),
+        _csv(row['vendor_name']),
+        _csv(row['shop_type']),
+        _csv(row['tx_timestamp']),
+        _csv(row['description']),
+        _csv(row['is_synced']),
+        _csv(row['updated_at']),
+      ].join(','));
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final fileName = 'transactions_export_${DateTime.now().toUtc().millisecondsSinceEpoch}.csv';
+    final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+    await file.writeAsString(buffer.toString());
+    return file.path;
   }
 
   String _id() {
@@ -246,5 +243,11 @@ class TransactionRepository {
 
   String _smsKey(ParsedSmsTransaction sms) {
     return '${sms.sender}|${sms.timestamp.millisecondsSinceEpoch}|${sms.body.hashCode}';
+  }
+
+  String _csv(Object? value) {
+    if (value == null) return '""';
+    final raw = value.toString().replaceAll('"', '""');
+    return '"$raw"';
   }
 }

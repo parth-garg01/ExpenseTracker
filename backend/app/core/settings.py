@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     )
     jwt_secret: str = Field(default='change-me', alias='API_KEY_02_JWT_SECRET')
 
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
 
 settings = Settings()
