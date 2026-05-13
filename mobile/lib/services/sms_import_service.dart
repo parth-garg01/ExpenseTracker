@@ -9,14 +9,25 @@ import '../models/parsed_sms_transaction.dart';
 class SmsImportService {
   final Telephony _telephony = Telephony.instance;
   static const _pendingKey = 'pending_sms_events_v1';
+  static const _importStartEpochMsKey = 'sms_import_start_epoch_ms_v1';
   static final RegExp _iciciStrictDebitPattern = RegExp(
     r'^ICICI Bank Acct [A-Za-z0-9*Xx]{3,} debited for Rs\.?\s*(\d+(?:\.\d{1,2})?) on \d{2}-[A-Za-z]{3}-\d{2};\s*([A-Za-z0-9 .&\-]{2,60}?)\s+credited\.\s*UPI:(\d{10,20})\.\s*Call \d+ for dispute\.\s*SMS BLOCK \d+ to \d+\.$',
     caseSensitive: false,
   );
   static final RegExp _iciciStrictCreditPattern = RegExp(
-    r'^ICICI Bank Acct [A-Za-z0-9*Xx]{3,} credited (?:with|for) Rs\.?\s*(\d+(?:\.\d{1,2})?) on \d{2}-[A-Za-z]{3}-\d{2};\s*(?:from|by)\s+([A-Za-z0-9 .&\-]{2,60}?)\.?\s*(?:UPI:(\d{10,20})\.)?.*$',
+    r'^ICICI Bank Acct [A-Za-z0-9*Xx]{3,} credited (?:with|for) Rs\.?\s*(\d+(?:\.\d{1,2})?) on \d{2}-[A-Za-z]{3}-\d{2};\s*(.+)$',
     caseSensitive: false,
   );
+  static final RegExp _creditCounterpartyRegex = RegExp(r'(?i)(?:from|by)\s+([A-Za-z0-9 .&\-]{2,60})');
+
+  Future<int> _getImportStartEpochMs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getInt(_importStartEpochMsKey);
+    if (existing != null) return existing;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await prefs.setInt(_importStartEpochMsKey, now);
+    return now;
+  }
 
   Future<bool> ensureSmsPermission() async {
     final status = await Permission.sms.request();
@@ -26,6 +37,7 @@ class SmsImportService {
   Future<List<ParsedSmsTransaction>> fetchRecentTransactions({int limit = 200}) async {
     final granted = await Permission.sms.isGranted;
     if (!granted) return [];
+    final importStartEpochMs = await _getImportStartEpochMs();
 
     final messages = await _telephony.getInboxSms(
       columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
@@ -34,6 +46,7 @@ class SmsImportService {
 
     final parsed = <ParsedSmsTransaction>[];
     for (final sms in messages.take(limit)) {
+      if ((sms.date ?? 0) < importStartEpochMs) continue;
       final body = sms.body ?? '';
       final sender = sms.address ?? 'UNKNOWN';
       final tx = _parseSms(sender: sender, body: body, epochMs: sms.date ?? 0);
@@ -47,8 +60,10 @@ class SmsImportService {
   }) async {
     final granted = await Permission.sms.isGranted;
     if (!granted) return;
+    final importStartEpochMs = await _getImportStartEpochMs();
     _telephony.listenIncomingSms(
       onNewMessage: (SmsMessage sms) {
+        if ((sms.date ?? 0) < importStartEpochMs) return;
         final tx = _parseSms(
           sender: sms.address ?? 'UNKNOWN',
           body: sms.body ?? '',
@@ -164,7 +179,9 @@ class SmsImportService {
     if (creditMatch != null) {
       final amount = double.tryParse(creditMatch.group(1) ?? '');
       if (amount == null) return null;
-      final vendor = (creditMatch.group(2) ?? sender).trim();
+      final tail = (creditMatch.group(2) ?? '').trim();
+      final counterpartyMatch = _creditCounterpartyRegex.firstMatch(tail);
+      final vendor = ((counterpartyMatch?.group(1) ?? tail).trim().isEmpty ? sender : (counterpartyMatch?.group(1) ?? tail).trim());
       return ParsedSmsTransaction(
         sender: sender,
         body: normalized,
