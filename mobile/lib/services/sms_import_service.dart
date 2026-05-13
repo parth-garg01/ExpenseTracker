@@ -10,7 +10,7 @@ class SmsImportService {
   final Telephony _telephony = Telephony.instance;
   static const _pendingKey = 'pending_sms_events_v1';
   static final RegExp _strictUpiBankAlert = RegExp(
-    r'(?i)\b(?:icici|hdfc|sbi|axis|kotak|bank)\b.*\bacct\b.*\bdebited\b.*\bupi:\d+',
+    r'(?i)\b(?:icici|hdfc|sbi|axis|kotak|bank)\b.*\b(?:acct|a\/c|account)\b.*\bdebited\b.*\bupi:\d+',
   );
   static final RegExp _debitedAmountRegex = RegExp(
     r'(?i)\bdebited\s+for\s+(?:inr|rs\.?|₹)\s*(\d+(?:\.\d{1,2})?)',
@@ -29,7 +29,7 @@ class SmsImportService {
     final messages = await _telephony.getInboxSms(
       columns: [SmsColumn.ADDRESS, SmsColumn.BODY, SmsColumn.DATE],
       sortOrder: [OrderBy(SmsColumn.DATE, sort: Sort.DESC)],
-    );
+    ).timeout(const Duration(seconds: 10), onTimeout: () => <SmsMessage>[]);
 
     final parsed = <ParsedSmsTransaction>[];
     for (final sms in messages.take(limit)) {

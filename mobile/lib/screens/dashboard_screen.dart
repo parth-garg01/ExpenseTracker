@@ -49,8 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final granted = await smsImport.ensureSmsPermission();
     if (!granted) return;
     final pending = await smsImport.consumePendingBackgroundSms();
-    final recent = await smsImport.fetchRecentTransactions();
-    await repo.ingestParsedSms([...pending, ...recent]);
+    await repo.ingestParsedSms(pending);
   }
 
   Future<void> _load() async {
@@ -84,15 +83,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           leading: Padding(
             padding: const EdgeInsets.only(left: 12),
-            child: CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: Text(
-                'SS',
-                style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.menu_book_rounded, size: 20, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  Positioned(
+                    right: 3,
+                    bottom: 3,
+                    child: Icon(Icons.edit, size: 11, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  ),
+                ],
               ),
             ),
           ),
-          title: const Text('SpendSage'),
+          title: const Text('Expense Tracker'),
           actions: [
             IconButton(
               onPressed: () async {
@@ -104,7 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                   return;
                 }
-                final rows = await smsImport.fetchRecentTransactions();
+                final rows = await smsImport.fetchRecentTransactions(limit: 120);
                 final inserted = await repo.ingestParsedSms(rows);
                 await _load();
                 if (!mounted) return;
