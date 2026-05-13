@@ -65,12 +65,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final spent = transactions.where((e) => !e.isCredit).fold<double>(0, (a, b) => a + b.amount);
     final received = transactions.where((e) => e.isCredit).fold<double>(0, (a, b) => a + b.amount);
-    final dynamicShopTypes = {
-      ..._defaultShopTypes,
-      ...transactions.map((tx) => tx.shopType).where((type) => type.trim().isNotEmpty),
-    }.toList()
-      ..sort();
-    final filterShopTypes = ['All', ...dynamicShopTypes];
 
     return DefaultTabController(
       length: 3,
@@ -127,6 +121,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _dateView(double spent, double received) {
+    final dynamicShopTypes = {
+      ..._defaultShopTypes,
+      ...transactions.map((tx) => tx.shopType).where((type) => type.trim().isNotEmpty),
+    }.toList()
+      ..sort();
+    final filterShopTypes = ['All', ...dynamicShopTypes];
+
     return Column(
       children: [
         Padding(
