@@ -35,6 +35,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _bootstrap() async {
     await repo.seedIfEmpty();
+    await repo.normalizeLegacyImportedSms();
     await _autoImportSmsOnOpen();
     await smsImport.startIncomingSmsListener(
       onForegroundTransaction: (tx) async {

@@ -196,6 +196,17 @@ class TransactionRepository {
     return;
   }
 
+  Future<void> normalizeLegacyImportedSms() async {
+    final database = await LocalDatabase.instance.db;
+    final uid = await userId;
+    await database.update(
+      'transactions',
+      {'type': 'debit', 'updated_at': DateTime.now().toUtc().toIso8601String()},
+      where: "user_id = ? AND description = ? AND type = ?",
+      whereArgs: [uid, 'Imported from SMS', 'credit'],
+    );
+  }
+
   Future<void> addManualTransaction({
     required double amount,
     required String type,

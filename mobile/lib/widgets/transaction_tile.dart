@@ -22,7 +22,7 @@ class TransactionTile extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       title: Text(tx.vendorName ?? tx.rawVendorName),
-      subtitle: Text('${tx.shopType} • ${DateFormat('dd MMM, hh:mm a').format(tx.timestamp)}'),
+      subtitle: Text('${tx.shopType} • ${DateFormat('dd MMM').format(tx.timestamp)}'),
       trailing: Text(
         '${tx.isCredit ? '+' : '-'}₹${tx.amount.toStringAsFixed(2)}',
         style: TextStyle(color: amountColor, fontWeight: FontWeight.w700),

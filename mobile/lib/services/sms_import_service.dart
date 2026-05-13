@@ -135,6 +135,11 @@ class SmsImportService {
   }
 
   static ParsedSmsTransaction? _parseStrictIciciUpiDebit({required String sender, required String body}) {
+    final normalizedSender = sender.toLowerCase();
+    final isLikelyIciciSender =
+        normalizedSender.contains('icici') || normalizedSender.contains('icicib') || normalizedSender.contains('icici bank');
+    if (!isLikelyIciciSender) return null;
+
     final normalized = body.replaceAll(RegExp(r'\s+'), ' ').trim();
     final match = _iciciStrictPattern.firstMatch(normalized);
     if (match == null) return null;
