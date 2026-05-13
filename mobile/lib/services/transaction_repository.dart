@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/transaction_item.dart';
@@ -11,6 +12,7 @@ import 'local_database.dart';
 
 class TransactionRepository {
   TransactionRepository();
+  static const String _freshStartAppliedKey = 'fresh_start_applied_v1';
 
   Future<String> get userId async =>
       dotenv.env['API_KEY_02_USER_ID'] ?? '550e8400-e29b-41d4-a716-446655440000';
@@ -194,6 +196,20 @@ class TransactionRepository {
 
   Future<void> syncNow() async {
     return;
+  }
+
+  Future<void> applyFreshStartOnce() async {
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyApplied = prefs.getBool(_freshStartAppliedKey) ?? false;
+    if (alreadyApplied) return;
+
+    final database = await LocalDatabase.instance.db;
+    final uid = await userId;
+    await database.delete('transactions', where: 'user_id = ?', whereArgs: [uid]);
+    await database.delete('vendor_rules', where: 'user_id = ?', whereArgs: [uid]);
+    await database.delete('sms_ingest_log', where: 'user_id = ?', whereArgs: [uid]);
+
+    await prefs.setBool(_freshStartAppliedKey, true);
   }
 
   Future<void> normalizeLegacyImportedSms() async {
