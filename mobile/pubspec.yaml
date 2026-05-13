@@ -19,6 +19,7 @@ dependencies:
   telephony: ^0.2.0
   permission_handler: ^11.3.1
   path_provider: ^2.1.4
+  share_plus: ^10.0.2
 
 dev_dependencies:
   flutter_test:

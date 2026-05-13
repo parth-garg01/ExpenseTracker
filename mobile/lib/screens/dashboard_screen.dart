@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/transaction_item.dart';
 import '../services/transaction_repository.dart';
@@ -128,10 +129,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             IconButton(
               onPressed: () async {
-                final exportPath = await repo.exportTransactionsCsv();
+                final exportFile = await repo.exportTransactionsCsvFile();
+                await Share.shareXFiles(
+                  [XFile(exportFile.path)],
+                  text: 'Expense Tracker CSV export',
+                  subject: 'Expense Tracker Export',
+                );
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('CSV exported: $exportPath')),
+                  const SnackBar(content: Text('CSV ready. Use share options to save or send it.')),
                 );
               },
               icon: const Icon(Icons.download),

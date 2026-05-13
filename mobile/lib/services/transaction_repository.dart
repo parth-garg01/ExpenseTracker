@@ -262,6 +262,11 @@ class TransactionRepository {
     return file.path;
   }
 
+  Future<File> exportTransactionsCsvFile() async {
+    final path = await exportTransactionsCsv();
+    return File(path);
+  }
+
   String _id() {
     final now = DateTime.now().microsecondsSinceEpoch;
     final rnd = Random().nextInt(1 << 20);
