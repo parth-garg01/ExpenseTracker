@@ -202,7 +202,7 @@ class TransactionRepository {
     await database.update(
       'transactions',
       {'type': 'debit', 'updated_at': DateTime.now().toUtc().toIso8601String()},
-      where: "user_id = ? AND description = ? AND type = ?",
+      where: "user_id = ? AND description = ? AND type = ? AND vendor_name IS NULL AND raw_vendor_name GLOB '[0-9]*'",
       whereArgs: [uid, 'Imported from SMS', 'credit'],
     );
   }

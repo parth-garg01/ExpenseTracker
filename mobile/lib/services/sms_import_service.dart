@@ -9,8 +9,12 @@ import '../models/parsed_sms_transaction.dart';
 class SmsImportService {
   final Telephony _telephony = Telephony.instance;
   static const _pendingKey = 'pending_sms_events_v1';
-  static final RegExp _iciciStrictPattern = RegExp(
+  static final RegExp _iciciStrictDebitPattern = RegExp(
     r'^ICICI Bank Acct [A-Za-z0-9*Xx]{3,} debited for Rs\.?\s*(\d+(?:\.\d{1,2})?) on \d{2}-[A-Za-z]{3}-\d{2};\s*([A-Za-z0-9 .&\-]{2,60}?)\s+credited\.\s*UPI:(\d{10,20})\.\s*Call \d+ for dispute\.\s*SMS BLOCK \d+ to \d+\.$',
+    caseSensitive: false,
+  );
+  static final RegExp _iciciStrictCreditPattern = RegExp(
+    r'^ICICI Bank Acct [A-Za-z0-9*Xx]{3,} credited (?:with|for) Rs\.?\s*(\d+(?:\.\d{1,2})?) on \d{2}-[A-Za-z]{3}-\d{2};\s*(?:from|by)\s+([A-Za-z0-9 .&\-]{2,60}?)\.?\s*(?:UPI:(\d{10,20})\.)?.*$',
     caseSensitive: false,
   );
 
@@ -108,7 +112,7 @@ class SmsImportService {
   static ParsedSmsTransaction? _tryParseBackgroundSms(SmsMessage sms) {
     final sender = sms.address ?? 'UNKNOWN';
     final body = sms.body ?? '';
-    final parsed = _parseStrictIciciUpiDebit(sender: sender, body: body);
+    final parsed = _parseStrictIciciUpiTransaction(sender: sender, body: body);
     if (parsed == null) return null;
     return ParsedSmsTransaction(
       sender: parsed.sender,
@@ -121,7 +125,7 @@ class SmsImportService {
   }
 
   ParsedSmsTransaction? _parseSms({required String sender, required String body, required int epochMs}) {
-    final parsed = _parseStrictIciciUpiDebit(sender: sender, body: body);
+    final parsed = _parseStrictIciciUpiTransaction(sender: sender, body: body);
     if (parsed == null) return null;
 
     return ParsedSmsTransaction(
@@ -134,25 +138,43 @@ class SmsImportService {
     );
   }
 
-  static ParsedSmsTransaction? _parseStrictIciciUpiDebit({required String sender, required String body}) {
+  static ParsedSmsTransaction? _parseStrictIciciUpiTransaction({required String sender, required String body}) {
     final normalizedSender = sender.toLowerCase();
     final isLikelyIciciSender =
         normalizedSender.contains('icici') || normalizedSender.contains('icicib') || normalizedSender.contains('icici bank');
     if (!isLikelyIciciSender) return null;
 
     final normalized = body.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final match = _iciciStrictPattern.firstMatch(normalized);
-    if (match == null) return null;
-    final amount = double.tryParse(match.group(1) ?? '');
-    if (amount == null) return null;
-    final vendor = (match.group(2) ?? sender).trim();
-    return ParsedSmsTransaction(
-      sender: sender,
-      body: normalized,
-      timestamp: DateTime.now().toUtc(),
-      amount: amount,
-      type: 'debit',
-      rawVendorName: vendor,
-    );
+    final debitMatch = _iciciStrictDebitPattern.firstMatch(normalized);
+    if (debitMatch != null) {
+      final amount = double.tryParse(debitMatch.group(1) ?? '');
+      if (amount == null) return null;
+      final vendor = (debitMatch.group(2) ?? sender).trim();
+      return ParsedSmsTransaction(
+        sender: sender,
+        body: normalized,
+        timestamp: DateTime.now().toUtc(),
+        amount: amount,
+        type: 'debit',
+        rawVendorName: vendor,
+      );
+    }
+
+    final creditMatch = _iciciStrictCreditPattern.firstMatch(normalized);
+    if (creditMatch != null) {
+      final amount = double.tryParse(creditMatch.group(1) ?? '');
+      if (amount == null) return null;
+      final vendor = (creditMatch.group(2) ?? sender).trim();
+      return ParsedSmsTransaction(
+        sender: sender,
+        body: normalized,
+        timestamp: DateTime.now().toUtc(),
+        amount: amount,
+        type: 'credit',
+        rawVendorName: vendor,
+      );
+    }
+
+    return null;
   }
 }
